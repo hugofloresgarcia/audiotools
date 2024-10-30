@@ -46,7 +46,7 @@ class Meter(torch.nn.Module):
         self.block_size = block_size
         self.use_fir = use_fir
 
-        G = torch.from_numpy(np.array([1.0, 1.0, 1.0, 1.41, 1.41]))
+        G = torch.from_numpy(np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
         self.register_buffer("G", G)
 
         # Compute impulse responses so that filtering is fast via

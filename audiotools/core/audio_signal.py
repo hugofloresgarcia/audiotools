@@ -7,6 +7,7 @@ import tempfile
 import typing
 import warnings
 from collections import namedtuple
+import subprocess
 from pathlib import Path
 
 import julius
@@ -23,6 +24,25 @@ from .ffmpeg import FFMPEGMixin
 from .loudness import LoudnessMixin
 from .playback import PlayMixin
 from .whisper import WhisperMixin
+
+
+def fast_get_audio_length(path: str) -> float:
+    process = subprocess.Popen(
+        [
+            'ffprobe', '-i', path, '-v', 'error', '-show_entries',
+            'format=duration'
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout, _ = process.communicate()
+    if process.returncode: return None
+    try:
+        stdout = stdout.decode().split('\n')[1].split('=')[-1]
+        length = float(stdout)
+        return float(length)
+    except:
+        return None
 
 
 STFTParams = namedtuple(
@@ -210,8 +230,12 @@ class AudioSignal(
         --------
         >>> signal = AudioSignal.excerpt("path/to/audio", duration=5)
         """
-        info = util.info(audio_path)
-        total_duration = info.duration
+
+        total_duration = fast_get_audio_length(audio_path)
+        if total_duration is None:
+            print(f"had to to slow info fall back for {audio_path}")
+            info = util.info(audio_path)
+            total_duration = info.duration
 
         state = util.random_state(state)
         lower_bound = 0 if offset is None else offset
