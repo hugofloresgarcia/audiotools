@@ -220,6 +220,7 @@ def _close_temp_files(tmpfiles: list):
 
 
 AUDIO_EXTENSIONS = [".wav", ".flac", ".mp3", ".mp4"]
+AUDIO_EXTENSIONS += [x.upper() for x in AUDIO_EXTENSIONS]
 
 
 def find_audio(folder: str, ext: List[str] = AUDIO_EXTENSIONS):
@@ -234,6 +235,7 @@ def find_audio(folder: str, ext: List[str] = AUDIO_EXTENSIONS):
         Extensions to look for without the ., by default
         ``['.wav', '.flac', '.mp3', '.mp4']``.
     """
+    print(f"finding audio in {folder}")
     folder = Path(folder)
     # Take care of case where user has passed in an audio file directly
     # into one of the calling functions.
@@ -248,6 +250,7 @@ def find_audio(folder: str, ext: List[str] = AUDIO_EXTENSIONS):
     files = []
     for x in ext:
         files += folder.glob(f"**/*{x}")
+        print(f"found {len(files)} files with extension {x}")
     return files
 
 
