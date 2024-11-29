@@ -60,6 +60,9 @@ class AudioLoader:
             for src_idx, src in enumerate(self.audio_lists)
             for item_idx in range(len(src))
         ]
+        # make sure we're not empty
+        if len(self.audio_indices) == 0:
+            raise ValueError("No audio files found in sources.")
         if shuffle:
             state = util.random_state(shuffle_state)
             state.shuffle(self.audio_indices)
@@ -73,7 +76,7 @@ class AudioLoader:
         state,
         sample_rate: int,
         duration: float,
-        loudness_cutoff: float = -40,
+        loudness_cutoff: float = None,
         num_channels: int = 1,
         offset: float = None,
         source_idx: int = None,
@@ -99,19 +102,36 @@ class AudioLoader:
         signal = AudioSignal.zeros(duration, sample_rate, num_channels)
 
         if path != "none":
+            import time
+            t0 = time.time()
             if offset is None:
-                signal = AudioSignal.salient_excerpt(
+                # print(f"\nloading salient excerpt")
+                # print(path)
+                signal = AudioSignal.excerpt(
                     path,
                     duration=duration,
                     state=state,
-                    loudness_cutoff=loudness_cutoff,
+                    # loudness_cutoff=loudness_cutoff,
                 )
             else:
+                # print("just loading")
                 signal = AudioSignal(
                     path,
                     offset=offset,
                     duration=duration,
                 )
+            signal.metadata["load_time"] = time.time() - t0
+            # warn if the load time was longer than 5 seconds
+            # if signal.metadata["load_time"] > 1.2:
+                # print(f"{path:<100} {signal.metadata['load_time']:<10.2f} {signal.metadata['total_duration']:<10.2f} {time.time():<10.2f}")
+                # with open("dataload_debug.txt", "a") as f:
+                    # append a new line with the path and load time
+                    # and the duration of the file
+                    # and the current time
+                    # the above is too messy, format it into columns
+                    # f.write(f"{path:<100} {signal.metadata['load_time']:<10.2f} {signal.metadata['file_duration']:<10.2f} {time.time():<10.2f}\n")
+            # print(f"load: {time.time() - t0:.2f} seconds")
+            # print(f"Loading {path} took {time.time() - t0:.2f} seconds.")
 
         if num_channels == 1:
             signal = signal.to_mono()
@@ -362,7 +382,7 @@ class AudioDataset:
         n_examples: int = 1000,
         duration: float = 0.5,
         offset: float = None,
-        loudness_cutoff: float = -40,
+        loudness_cutoff: float = None,
         num_channels: int = 1,
         transform: Callable = None,
         aligned: bool = False,
@@ -397,59 +417,63 @@ class AudioDataset:
                 align_lists(input_lists, matcher)
 
     def __getitem__(self, idx):
-        state = util.random_state(idx)
-        offset = None if self.offset is None else self.offset
-        item = {}
+        try:
+            state = util.random_state(idx)
+            offset = None if self.offset is None else self.offset
+            item = {}
 
-        keys = list(self.loaders.keys())
-        if self.shuffle_loaders:
-            state.shuffle(keys)
+            keys = list(self.loaders.keys())
+            if self.shuffle_loaders:
+                state.shuffle(keys)
 
-        loader_kwargs = {
-            "state": state,
-            "sample_rate": self.sample_rate,
-            "duration": self.duration,
-            "loudness_cutoff": self.loudness_cutoff,
-            "num_channels": self.num_channels,
-            "global_idx": idx if self.without_replacement else None,
-        }
+            loader_kwargs = {
+                "state": state,
+                "sample_rate": self.sample_rate,
+                "duration": self.duration,
+                "loudness_cutoff": self.loudness_cutoff,
+                "num_channels": self.num_channels,
+                "global_idx": idx if self.without_replacement else None,
+            }
 
-        # Draw item from first loader
-        loader = self.loaders[keys[0]]
-        item[keys[0]] = loader(**loader_kwargs)
+            # Draw item from first loader
+            loader = self.loaders[keys[0]]
+            item[keys[0]] = loader(**loader_kwargs)
 
-        for key in keys[1:]:
-            loader = self.loaders[key]
-            if self.aligned:
-                # Path mapper takes the current loader + everything
-                # returned by the first loader.
-                offset = item[keys[0]]["signal"].metadata["offset"]
-                loader_kwargs.update(
-                    {
-                        "offset": offset,
-                        "source_idx": item[keys[0]]["source_idx"],
-                        "item_idx": item[keys[0]]["item_idx"],
-                    }
+            for key in keys[1:]:
+                loader = self.loaders[key]
+                if self.aligned:
+                    # Path mapper takes the current loader + everything
+                    # returned by the first loader.
+                    offset = item[keys[0]]["signal"].metadata["offset"]
+                    loader_kwargs.update(
+                        {
+                            "offset": offset,
+                            "source_idx": item[keys[0]]["source_idx"],
+                            "item_idx": item[keys[0]]["item_idx"],
+                        }
+                    )
+                item[key] = loader(**loader_kwargs)
+
+            # Sort dictionary back into original order
+            keys = list(self.loaders.keys())
+            item = {k: item[k] for k in keys}
+
+            item["idx"] = idx
+            if self.transform is not None:
+                item["transform_args"] = self.transform.instantiate(
+                    state=state, signal=item[keys[0]]["signal"]
                 )
-            item[key] = loader(**loader_kwargs)
 
-        # Sort dictionary back into original order
-        keys = list(self.loaders.keys())
-        item = {k: item[k] for k in keys}
+            # If there's only one loader, pop it up
+            # to the main dictionary, instead of keeping it
+            # nested.
+            if len(keys) == 1:
+                item.update(item.pop(keys[0]))
 
-        item["idx"] = idx
-        if self.transform is not None:
-            item["transform_args"] = self.transform.instantiate(
-                state=state, signal=item[keys[0]]["signal"]
-            )
-
-        # If there's only one loader, pop it up
-        # to the main dictionary, instead of keeping it
-        # nested.
-        if len(keys) == 1:
-            item.update(item.pop(keys[0]))
-
-        return item
+            return item
+        except Exception as e:
+            print(e)
+            return self.__getitem__((idx + 1) % self.length)
 
     def __len__(self):
         return self.length

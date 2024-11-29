@@ -14,6 +14,7 @@ import julius
 import numpy as np
 import soundfile
 import torch
+import torch.compiler
 
 from . import util
 from .display import DisplayMixin
@@ -67,7 +68,7 @@ match_stride : bool, optional
 padding_type : str, optional
     Type of padding to use, by default 'reflect'
 """
-STFTParams.__new__.__defaults__ = (None, None, None, None, None)
+STFTParams.__new__.__defaults__ = (None, None, "sqrt_hann", None, None)
 
 
 class AudioSignal(
@@ -177,7 +178,7 @@ class AudioSignal(
         elif audio_array is not None:
             assert sample_rate is not None, "Must set sample rate!"
             self.load_from_array(audio_array, sample_rate, device=device)
-
+            
         self.window = None
         self.stft_params = stft_params
 
@@ -237,14 +238,49 @@ class AudioSignal(
             info = util.info(audio_path)
             total_duration = info.duration
 
+        try: 
+            # Hugo: I think this only works on wav files?
+            total_duration = util.fast_get_duration(audio_path)
+            # total_duration = util.info(audio_path).duration
+            # total_duration = util.wave_audio_file_info(audio_path).duration
+
+            util_time = time.time() - t0
+            # if we took more them 0.5s,log into a debug.txt file
+            if util_time > 0.5:
+                with open("debug.txt", "a") as f:
+                    f.write(f"wave_info took {util_time} seconds for {audio_path} \n")
+        except Exception as e:
+            print(e)
+            print(f"failed to get fast duration. had to resort to slow info...")
+            # log into a debug.txt file
+            with open("debug.txt", "a") as f:
+                f.write(f"failed to get fast duration for {audio_path}. had to resort to slow info...\n")
+            info = util.info(audio_path)
+            total_duration = info.duration
+
+        info_time = time.time() - t0
+    
+        if duration is None:
+            duration = total_duration
         state = util.random_state(state)
         lower_bound = 0 if offset is None else offset
         upper_bound = max(total_duration - duration, 0)
         offset = state.uniform(lower_bound, upper_bound)
 
+        t0 = time.time()
         signal = cls(audio_path, offset=offset, duration=duration, **kwargs)
+        load_time = time.time() - t0
+        # log load time and path if it took more than 0.5s
+        if load_time > 0.5:
+            with open("debug.txt", "a") as f:
+                f.write(f"loading took {load_time} seconds for {audio_path} \n")
+        # print(f"signal took {time.time() - t0} seconds")
         signal.metadata["offset"] = offset
         signal.metadata["duration"] = duration
+        signal.metadata["file_duration"] = total_duration
+        signal.metadata["info_time"] = info_time
+        signal.metadata["load_time"] = load_time
+
 
         return signal
 
@@ -522,13 +558,16 @@ class AudioSignal(
         """
         import librosa
 
-        data, sample_rate = librosa.load(
-            audio_path,
-            offset=offset,
-            duration=duration,
-            sr=None,
-            mono=False,
-        )
+        try:
+            data, sample_rate = librosa.load(
+                audio_path,
+                offset=offset,
+                duration=duration,
+                sr=None,
+                mono=False,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error loading {audio_path}: {e}")
         data = util.ensure_tensor(data)
         if data.shape[-1] == 0:
             raise RuntimeError(
@@ -1032,6 +1071,7 @@ class AudioSignal(
     # STFT
     @staticmethod
     @functools.lru_cache(None)
+    # @torch.compiler.disable
     def get_window(window_type: str, window_length: int, device: str):
         """Wrapper around scipy.signal.get_window so one can also get the
         popular sqrt-hann window. This function caches for efficiency
@@ -1321,6 +1361,7 @@ class AudioSignal(
 
     @staticmethod
     @functools.lru_cache(None)
+    # @torch.compiler.disable
     def get_mel_filters(
         sr: int, n_fft: int, n_mels: int, fmin: float = 0.0, fmax: float = None
     ):
@@ -1394,6 +1435,7 @@ class AudioSignal(
 
     @staticmethod
     @functools.lru_cache(None)
+    # @torch.compiler.disable
     def get_dct(n_mfcc: int, n_mels: int, norm: str = "ortho", device: str = None):
         """Create a discrete cosine transform (DCT) transformation matrix with shape (``n_mels``, ``n_mfcc``),
         it can be normalized depending on norm. For more information about dct:

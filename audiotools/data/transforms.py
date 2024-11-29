@@ -825,7 +825,7 @@ class CrossTalk(BaseTransform):
         weights: List[float] = None,
         name: str = None,
         prob: float = 1.0,
-        loudness_cutoff: float = -40,
+        loudness_cutoff: float = -60,
     ):
         super().__init__(name=name, prob=prob)
 

@@ -63,6 +63,7 @@ class BaseModel(nn.Module):
     """Names of libraries that are internal to the torch.package saving mechanism.
     Source code from these libraries will be saved alongside the model."""
 
+    @torch.jit.unused
     def save(
         self,
         path: str,
@@ -129,6 +130,7 @@ class BaseModel(nn.Module):
         return path
 
     @property
+    @torch.jit.unused
     def device(self):
         """Gets the device the model is on by looking at the device of
         the first parameter. May not be valid if model is split across
@@ -137,6 +139,7 @@ class BaseModel(nn.Module):
         return list(self.parameters())[0].device
 
     @classmethod
+    @torch.jit.unused
     def load(
         cls,
         location: str,
@@ -166,22 +169,20 @@ class BaseModel(nn.Module):
         BaseModel
             A model that inherits from BaseModel.
         """
-        try:
-            model = cls._load_package(location, package_name=package_name)
-        except:
-            model_dict = torch.load(location, "cpu")
-            metadata = model_dict["metadata"]
-            metadata["kwargs"].update(kwargs)
+        assert package_name is None, "packaging is no longer supported! - hugo "
+        model_dict = torch.load(location, "cpu")
+        metadata = model_dict["metadata"]
+        metadata["kwargs"].update(kwargs)
 
-            sig = inspect.signature(cls)
-            class_keys = list(sig.parameters.keys())
-            for k in list(metadata["kwargs"].keys()):
-                if k not in class_keys:
-                    metadata["kwargs"].pop(k)
+        sig = inspect.signature(cls)
+        class_keys = list(sig.parameters.keys())
+        for k in list(metadata["kwargs"].keys()):
+            if k not in class_keys:
+                metadata["kwargs"].pop(k)
 
-            model = cls(*args, **metadata["kwargs"])
-            model.load_state_dict(model_dict["state_dict"], strict=strict)
-            model.metadata = metadata
+        model = cls(*args, **metadata["kwargs"])
+        model.load_state_dict(model_dict["state_dict"], strict=strict)
+        model.metadata = metadata
 
         return model
 
@@ -288,7 +289,7 @@ class BaseModel(nn.Module):
     def load_from_folder(
         cls,
         folder: typing.Union[str, Path],
-        package: bool = True,
+        package: bool = False,
         strict: bool = False,
         **kwargs,
     ):

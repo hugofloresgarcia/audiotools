@@ -69,7 +69,7 @@ class Accelerator:  # pragma: no cover
             def update(self):
                 pass
 
-        self.scaler = torch.cuda.amp.GradScaler() if amp else DummyScaler()
+        self.scaler = torch.amp.GradScaler() if amp else DummyScaler()
         self.device_ctx = (
             torch.cuda.device(self.local_rank) if torch.cuda.is_available() else None
         )
@@ -110,9 +110,9 @@ class Accelerator:  # pragma: no cover
     # Automatic mixed-precision utilities
     def autocast(self, *args, **kwargs):
         """Context manager for autocasting. Arguments
-        go to ``torch.cuda.amp.autocast``.
+        go to ``torch.amp.autocast``.
         """
-        return torch.cuda.amp.autocast(self.amp, *args, **kwargs)
+        return torch.amp.autocast(device_type=self.device, enabled=self.amp,*args, **kwargs)
 
     def backward(self, loss: torch.Tensor):
         """Backwards pass, after scaling the loss if ``amp`` is

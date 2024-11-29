@@ -5,6 +5,7 @@ import numbers
 import os
 import random
 import typing
+import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,95 @@ class Info:
         return self.num_frames / self.sample_rate
 
 
+def fast_get_audio_channels(path: str) -> dict:
+    process = subprocess.Popen(
+        [
+            'ffprobe', '-i', path, '-v', 'error', '-show_entries',
+            'stream=channels'
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout, _ = process.communicate()
+    if process.returncode: return None
+    stdout = stdout.decode().split('\n')[1].split('=')[-1]
+    channels = int(stdout)
+    return {"path": path, "channels": int(channels)}
+
+def fast_get_duration(path: str) -> float:  
+    # # HUGO: disabled. appears to be slower than ffprobe 
+    # if Path(path).suffix.lower() == ".wav" and False: 
+    #     import wave
+    #     with wave.open(path, 'r') as f:
+    #         frames = f.getnframes()
+    #         rate = f.getframerate()
+    #         duration = frames / float(rate)
+    #         return duration
+    # else:
+        # print("using subprocess to get fast duration")
+
+    process = subprocess.Popen(
+        [
+            'ffprobe', '-i', path, '-v', 'error', '-show_entries',
+            'format=duration'
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout, _ = process.communicate()
+    if process.returncode: return None
+    try:
+        stdout = stdout.decode().split('\n')[1].split('=')[-1]
+        duration = float(stdout)
+        return duration
+    except Exception as e:
+        raise e
+
+def fast_get_format(path: str) -> str:
+    process = subprocess.Popen(
+        [
+            'ffprobe', '-i', path, '-v', 'error', '-show_entries',
+            'format=format_name'
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout, _ = process.communicate()
+    if process.returncode: return None
+    try:
+        stdout = stdout.decode().split('\n')[1].split('=')[-1]
+        fmt = stdout
+        return fmt
+    except Exception as e:
+        raise e
+
+def fast_audio_file_info(path:str) -> Info:
+    try:
+        duration = fast_get_duration(path)
+        fmt = fast_get_format(path)
+        chan_data = fast_get_audio_channels(path)
+        return Info(sample_rate=chan_data['sample_rate'], num_frames=int(duration * chan_data['sample_rate']))
+    except Exception as e:
+        import warnings
+        print(f"Could not process {path}! {e}")
+        raise e
+
+def wave_audio_file_info(path: str) -> dict:
+    import wave
+
+    with wave.open(path, 'r') as f:
+        frames = f.getnframes()
+        rate = f.getframerate()
+        duration = frames / float(rate)
+        return Info(sample_rate=rate, num_frames=frames)
+
+def torch_info(audio_path: str):
+    try:
+        info = torchaudio.info(str(audio_path))
+    except:  # pragma: no cover
+        info = torchaudio.backend.soundfile_backend.info(str(audio_path))
+    return info
+
 def info(audio_path: str):
     """Shim for torchaudio.info to make 0.7.2 API match 0.8.0.
 
@@ -38,11 +128,7 @@ def info(audio_path: str):
     audio_path : str
         Path to audio file.
     """
-    # try default backend first, then fallback to soundfile
-    try:
-        info = torchaudio.info(str(audio_path))
-    except:  # pragma: no cover
-        info = torchaudio.backend.soundfile_backend.info(str(audio_path))
+    info = torch_info(audio_path)
 
     if isinstance(info, tuple):  # pragma: no cover
         signal_info = info[0]
@@ -51,7 +137,6 @@ def info(audio_path: str):
         info = Info(sample_rate=info.sample_rate, num_frames=info.num_frames)
 
     return info
-
 
 def ensure_tensor(
     x: typing.Union[np.ndarray, torch.Tensor, float, int],
@@ -249,8 +334,9 @@ def find_audio(folder: str, ext: List[str] = AUDIO_EXTENSIONS):
 
     files = []
     for x in ext:
-        files += folder.glob(f"**/*{x}")
-        print(f"found {len(files)} files with extension {x}")
+        new_files = list(folder.glob(f"**/*{x}"))
+        files += new_files
+        print(f"found {len(new_files)} files with extension {x}")
     return files
 
 
