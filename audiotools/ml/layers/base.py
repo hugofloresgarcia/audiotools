@@ -288,6 +288,7 @@ class BaseModel(nn.Module):
     @classmethod
     def load_from_folder(
         cls,
+        *args,
         folder: typing.Union[str, Path],
         package: bool = False,
         strict: bool = False,
@@ -319,7 +320,7 @@ class BaseModel(nn.Module):
         model_pth = "package.pth" if package else "weights.pth"
         model_pth = folder / model_pth
 
-        model = cls.load(model_pth, strict=strict)
+        model = cls.load(model_pth, *args, strict=strict)
         extra_data = {}
         excluded = ["package.pth", "weights.pth"]
         files = [x for x in folder.glob("*") if x.is_file() and x.name not in excluded]
