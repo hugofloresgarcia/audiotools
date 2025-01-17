@@ -40,13 +40,13 @@ setup(
         "pyloudnorm",
         "importlib-resources",
         "scipy",
-        "torch>=2.5",
+        "torch",
         "julius",
         "torchaudio",
         "ffmpy",
         "ipython",
         "rich",
-        "matplotlib>=3.5",  # See https://github.com/librosa/librosa/issues/1763#issuecomment-1742120524
+        "matplotlib",
         "librosa",
         "pystoi",
         "torch_stoi",
@@ -63,10 +63,6 @@ setup(
         "tests": [
             "pytest",
             "pytest-cov",
-            "line_profiler",
-            "pesq",
-            "gradio==3.32.0",
-            "transformers>=4.23.1",
         ],
         "docs": [
             "sphinx",
