@@ -30,7 +30,6 @@ class Info:
     def duration(self) -> float:
         return self.num_frames / self.sample_rate
 
-
 def fast_get_audio_channels(path: str) -> dict:
     process = subprocess.Popen(
         [

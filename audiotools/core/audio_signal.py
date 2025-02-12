@@ -9,6 +9,7 @@ import warnings
 from collections import namedtuple
 import subprocess
 from pathlib import Path
+import time 
 
 import julius
 import numpy as np
