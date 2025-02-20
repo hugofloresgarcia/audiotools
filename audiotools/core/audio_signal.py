@@ -245,11 +245,6 @@ class AudioSignal(
             # total_duration = util.info(audio_path).duration
             # total_duration = util.wave_audio_file_info(audio_path).duration
 
-            util_time = time.time() - t0
-            # if we took more them 0.5s,log into a debug.txt file
-            if util_time > 0.5:
-                with open("debug.txt", "a") as f:
-                    f.write(f"wave_info took {util_time} seconds for {audio_path} \n")
         except Exception as e:
             print(e)
             print(f"failed to get fast duration. had to resort to slow info...")
@@ -259,7 +254,6 @@ class AudioSignal(
             info = util.info(audio_path)
             total_duration = info.duration
 
-        info_time = time.time() - t0
     
         if duration is None:
             duration = total_duration
@@ -270,17 +264,9 @@ class AudioSignal(
 
         t0 = time.time()
         signal = cls(audio_path, offset=offset, duration=duration, **kwargs)
-        load_time = time.time() - t0
-        # log load time and path if it took more than 0.5s
-        if load_time > 0.5:
-            with open("debug.txt", "a") as f:
-                f.write(f"loading took {load_time} seconds for {audio_path} \n")
-        # print(f"signal took {time.time() - t0} seconds")
         signal.metadata["offset"] = offset
         signal.metadata["duration"] = duration
         signal.metadata["file_duration"] = total_duration
-        signal.metadata["info_time"] = info_time
-        signal.metadata["load_time"] = load_time
 
 
         return signal
